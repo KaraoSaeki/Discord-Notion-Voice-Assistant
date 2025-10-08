@@ -1,11 +1,11 @@
-import express from 'express';
+import express, { type Express } from 'express';
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env.js';
 import { logger } from '../core/logging.js';
 import { notionTokenStore } from '../core/notion/token-store.js';
 import { userContextStore } from '../core/context/user-context.js';
 
-const app = express();
+const app: Express = express();
 
 // Rate limiting
 const limiter = rateLimit({
@@ -88,7 +88,7 @@ app.get('/oauth/notion/callback', async (req, res) => {
 
     logger.info({ userId, workspaceId: tokenData.workspace_id }, 'Notion linked successfully');
 
-    res.send(`
+    return res.send(`
       <!DOCTYPE html>
       <html>
         <head>
@@ -111,7 +111,7 @@ app.get('/oauth/notion/callback', async (req, res) => {
     `);
   } catch (error) {
     logger.error({ error }, 'OAuth callback error');
-    res.status(500).send('Internal server error during OAuth');
+    return res.status(500).send('Internal server error during OAuth');
   }
 });
 

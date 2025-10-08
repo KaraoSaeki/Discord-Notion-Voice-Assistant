@@ -13,7 +13,12 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+# Use --no-frozen-lockfile if pnpm-lock.yaml doesn't exist yet
+RUN if [ -f pnpm-lock.yaml ]; then \
+      pnpm install --frozen-lockfile; \
+    else \
+      pnpm install; \
+    fi
 
 # Copy source code
 COPY . .
@@ -49,7 +54,13 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 
 # Install production dependencies only
-RUN pnpm install --prod --frozen-lockfile
+# Use --no-frozen-lockfile if pnpm-lock.yaml doesn't exist yet
+# --ignore-scripts to avoid running husky and other dev scripts
+RUN if [ -f pnpm-lock.yaml ]; then \
+      pnpm install --prod --frozen-lockfile --ignore-scripts; \
+    else \
+      pnpm install --prod --ignore-scripts; \
+    fi
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist

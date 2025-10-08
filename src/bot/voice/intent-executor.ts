@@ -3,7 +3,7 @@ import { Intent } from '../../core/nlu/gpt-tools.js';
 import {
   openPage,
   createBlock,
-  deleteBlock,
+  // deleteBlock, // TODO: Implement when needed
   goBack,
   createPage,
   summarizePage,

@@ -1,4 +1,36 @@
-@echo off
+=> ERROR [app runner  7/10] RUN if [ -f pnpm-lock.yaml ]; then       pnpm install --prod --frozen-lockfile;     else       pnpm install --pr  10.3s 
+ => [app builder 6/7] COPY . .                                                                                                                  0.0s 
+ => [app builder 7/7] RUN pnpm build                                                                                                            6.4s
+------
+ > [app runner  7/10] RUN if [ -f pnpm-lock.yaml ]; then       pnpm install --prod --frozen-lockfile;     else       pnpm install --prod;     fi:
+1.277 Progress: resolved 1, reused 0, downloaded 0, added 0
+1.886  WARN  deprecated supertest@6.3.4: Please upgrade to supertest v7.1.3+, see release notes at https://github.com/forwardemail/supertest/releases/tag/v7.1.3 - maintenance is supported by Forward Email @ https://forwardemail.net
+2.078  WARN  deprecated eslint@8.57.1: This version is no longer supported. Please see https://eslint.org/version-support for other options.
+2.280 Progress: resolved 18, reused 0, downloaded 14, added 0
+2.730  WARN  deprecated @discordjs/voice@0.16.1: This version uses deprecated encryption modes. Please use a newer version.
+3.285 Progress: resolved 26, reused 0, downloaded 22, added 0
+4.285 Progress: resolved 89, reused 0, downloaded 80, added 0
+5.289 Progress: resolved 136, reused 0, downloaded 123, added 0
+6.293 Progress: resolved 202, reused 0, downloaded 184, added 0
+7.295 Progress: resolved 312, reused 0, downloaded 270, added 0
+8.300 Progress: resolved 455, reused 0, downloaded 364, added 0
+9.101  WARN  10 deprecated subdependencies found: @humanwhocodes/config-array@0.13.0, @humanwhocodes/object-schema@2.0.3, are-we-there-yet@2.0.0, gauge@3.0.2, glob@7.2.3, inflight@1.0.6, node-domexception@1.0.0, npmlog@5.0.1, rimraf@3.0.2, superagent@8.1.2
+9.111 Packages: +204
+9.111 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+9.300 Progress: resolved 511, reused 0, downloaded 443, added 123
+9.381 Progress: resolved 511, reused 0, downloaded 443, added 204, done
+9.644  WARN  Failed to create bin at /app/node_modules/.bin/acorn. ENOENT: no such file or directory, open '/app/node_modules/.pnpm/acorn@8.15.0/node_modules/acorn/bin/acorn'
+9.754
+9.754 > discord-notion-voice-assistant@1.0.0 prepare /app
+9.754 > husky install
+9.754
+9.761 sh: husky: not found
+9.839  ELIFECYCLE  Command failed.
+------
+failed to solve: process "/bin/sh -c if [ -f pnpm-lock.yaml ]; then       pnpm install --prod --frozen-lockfile;     else       pnpm install --prod;     fi" did not complete successfully: exit code: 1
+
+ÔØî Failed to start containers
+Appuyez sur une touche pour continuer...@echo off
 REM ============================================
 REM Discord Notion Bot - Start Script (Windows)
 REM ============================================

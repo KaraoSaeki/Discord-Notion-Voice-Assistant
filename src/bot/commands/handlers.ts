@@ -40,7 +40,7 @@ export async function handleJoin(interaction: ChatInputCommandInteraction): Prom
     const connection = joinVoiceChannel({
       channelId: channel.id,
       guildId: interaction.guildId,
-      adapterCreator: interaction.guild!.voiceAdapterCreator,
+      adapterCreator: interaction.guild!.voiceAdapterCreator as any,
       selfDeaf: false,
       selfMute: false,
     });
@@ -89,7 +89,9 @@ export async function handleLinkNotion(interaction: ChatInputCommandInteraction)
   await interaction.deferReply({ ephemeral: true });
 
   const userId = interaction.user.id;
-  const scopes = env.NOTION_SCOPES.split(',');
+  
+  // Notion expects scopes as a single space-separated string
+  const scopes = env.NOTION_SCOPES.split(',').map((s: string) => s.trim()).join(' ');
 
   const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');
   authUrl.searchParams.set('client_id', env.NOTION_CLIENT_ID);
@@ -97,9 +99,7 @@ export async function handleLinkNotion(interaction: ChatInputCommandInteraction)
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('owner', 'user');
   authUrl.searchParams.set('state', userId);
-
-  // Add scopes as individual parameters
-  scopes.forEach((scope) => authUrl.searchParams.append('scope', scope.trim()));
+  authUrl.searchParams.set('scope', scopes);
 
   await interaction.editReply(
     `🔗 **Link your Notion workspace**\n\nClick here to authorize:\n${authUrl.toString()}\n\n⚠️ Make sure to select the workspace you want to use!`

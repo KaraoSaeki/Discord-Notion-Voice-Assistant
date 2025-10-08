@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+pnpm-lock.yaml
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist
+*.tsbuildinfo
+
+# Logs
+logs
+*.log
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Tests
+tests
+coverage
+
+# Documentation
+*.md
+LICENSE
+
+# Scripts (not needed in container)
+scripts
+
+# Docker
+docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Temporary files
+tmp
+temp
+*.tmp
+*.wav
+*.pcm
+audio-temp

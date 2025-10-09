@@ -50,6 +50,16 @@ export const commands = [
   new SlashCommandBuilder()
     .setName('reset-context')
     .setDescription('Reset current page and history'),
+
+  new SlashCommandBuilder()
+    .setName('execute')
+    .setDescription('Execute a text command on Notion')
+    .addStringOption((option) =>
+      option
+        .setName('command')
+        .setDescription('The command to execute (e.g., "open page tasks", "add paragraph with hello")')
+        .setRequired(true)
+    ),
 ].map((command) => command.toJSON());
 
 /**

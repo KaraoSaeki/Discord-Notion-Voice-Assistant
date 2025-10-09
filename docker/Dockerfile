@@ -31,13 +31,14 @@ RUN pnpm build
 # ============================================
 FROM node:20-alpine AS runner
 
-# Install dependencies for audio processing
+# Install dependencies for audio processing and native modules
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
     ffmpeg \
     opus \
+    opus-dev \
     libc6-compat
 
 # Install pnpm
@@ -53,14 +54,20 @@ WORKDIR /app
 # Copy package files
 COPY package.json pnpm-lock.yaml* ./
 
-# Install production dependencies only
-# Use --no-frozen-lockfile if pnpm-lock.yaml doesn't exist yet
-# --ignore-scripts to avoid running husky and other dev scripts
+# Install production dependencies with scripts enabled for native modules
+# This allows @discordjs/opus to build properly
 RUN if [ -f pnpm-lock.yaml ]; then \
-      pnpm install --prod --frozen-lockfile --ignore-scripts; \
+      pnpm install --prod --frozen-lockfile; \
     else \
-      pnpm install --prod --ignore-scripts; \
+      pnpm install --prod; \
     fi
+
+# Check which opus implementation is available
+# @discordjs/voice will automatically fallback to opusscript if @discordjs/opus fails
+RUN node -e "try { require('@discordjs/opus'); console.log('✅ Using @discordjs/opus (native)'); } catch(e) { try { require('opusscript'); console.log('✅ Using opusscript (fallback)'); } catch(e2) { console.error('❌ No opus implementation found'); process.exit(1); } }"
+
+# Verify encryption library is available
+RUN node -e "try { require('libsodium-wrappers'); console.log('✅ Using libsodium-wrappers for encryption'); } catch(e) { console.error('❌ No encryption library found'); process.exit(1); }"
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist

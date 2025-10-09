@@ -9,6 +9,7 @@ import {
   handleDryRun,
   handleTargetPage,
   handleResetContext,
+  handleExecute,
 } from './commands/handlers.js';
 
 export function createBot(): Client {
@@ -50,6 +51,9 @@ export function createBot(): Client {
           break;
         case 'reset-context':
           await handleResetContext(interaction);
+          break;
+        case 'execute':
+          await handleExecute(interaction);
           break;
         default:
           await interaction.reply({ content: 'Unknown command', ephemeral: true });

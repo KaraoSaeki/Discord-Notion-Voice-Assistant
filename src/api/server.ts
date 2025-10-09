@@ -4,6 +4,7 @@ import { env } from '../config/env.js';
 import { logger } from '../core/logging.js';
 import { notionTokenStore } from '../core/notion/token-store.js';
 import { userContextStore } from '../core/context/user-context.js';
+import { pendingAuthStore } from '../core/notion/pending-auth.js';
 
 const app: Express = express();
 
@@ -44,8 +45,15 @@ app.get('/oauth/notion/callback', async (req, res) => {
     return res.status(400).send('Missing authorization code');
   }
 
-  if (!state || typeof state !== 'string') {
-    return res.status(400).send('Missing state parameter');
+  // Resolve userId from state (auth code)
+  let userId: string | null = null;
+  if (state && typeof state === 'string') {
+    userId = pendingAuthStore.consume(state);
+  }
+
+  if (!userId) {
+    logger.warn({ state }, 'Invalid or expired authorization state');
+    return res.status(400).send('Invalid or expired authorization link. Please try /link-notion again.');
   }
 
   try {
@@ -74,9 +82,6 @@ app.get('/oauth/notion/callback', async (req, res) => {
       workspace_id: string;
       bot_id: string;
     };
-
-    // Store token (state contains userId)
-    const userId = state;
     notionTokenStore.set(userId, {
       accessToken: tokenData.access_token,
       workspaceId: tokenData.workspace_id,

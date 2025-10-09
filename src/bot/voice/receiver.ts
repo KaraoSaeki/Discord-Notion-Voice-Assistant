@@ -28,15 +28,19 @@ const activeChunkers = new Map<string, AudioChunker>();
 export function startVoiceReceiver(connection: VoiceConnection, authorId: string): void {
   const receiver = connection.receiver;
 
-  logger.info({ authorId }, 'Voice receiver started');
+  logger.info({ authorId, connectionState: connection.state.status }, 'Voice receiver started');
 
+  // Log when ANY user speaks (for debugging)
   receiver.speaking.on('start', (userId) => {
+    logger.info({ userId, authorId, isTarget: userId === authorId }, 'User started speaking');
+    
     if (userId !== authorId) {
       // Ignore other users
+      logger.debug({ userId }, 'Ignoring non-target user');
       return;
     }
 
-    logger.debug({ userId }, 'User started speaking');
+    logger.info({ userId }, '🎙️ Target user started speaking - subscribing to audio');
 
     const opusStream = receiver.subscribe(userId, {
       end: {
@@ -72,12 +76,14 @@ export function startVoiceReceiver(connection: VoiceConnection, authorId: string
 
     pcmStream.on('data', (chunk: Buffer) => {
       chunker.buffer = Buffer.concat([chunker.buffer, chunk]);
+      logger.debug({ userId, chunkSize: chunk.length, totalBufferSize: chunker.buffer.length }, 'Received PCM data');
 
       // If buffer exceeds chunk size, process it
       if (chunker.buffer.length >= CHUNK_SIZE) {
         const audioData = chunker.buffer.slice(0, CHUNK_SIZE);
         chunker.buffer = chunker.buffer.slice(CHUNK_SIZE);
 
+        logger.info({ userId, audioDataSize: audioData.length }, '🔊 Processing audio chunk');
         void processAudioChunk(audioData, userId);
       }
 

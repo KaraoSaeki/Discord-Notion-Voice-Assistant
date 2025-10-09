@@ -434,3 +434,185 @@ export async function summarizePage(
     };
   }
 }
+
+/**
+ * GENERATE_CONTENT: Generate content using GPT and add it to the page
+ */
+export async function generateContent(
+  notion: Client,
+  userId: string,
+  prompt: string,
+  blockType: string = 'paragraph',
+  correlationId: string
+): Promise<NotionActionResult> {
+  const startTime = Date.now();
+  const context = userContextStore.get(userId);
+  const pageId = context.currentPageId;
+
+  if (!pageId) {
+    return {
+      success: false,
+      message: 'No page is currently open',
+      duration: Date.now() - startTime,
+    };
+  }
+
+  try {
+    logger.info({ correlationId, userId, prompt, blockType }, 'Generating content with GPT');
+
+    // Use GPT to generate the content
+    const openai = new OpenAI({
+      apiKey: env.OPENAI_API_KEY,
+    });
+
+    const completion = await openai.chat.completions.create({
+      model: env.OPENAI_MODEL_GPT,
+      messages: [
+        {
+          role: 'system',
+          content: 'Tu es un assistant qui génère du contenu pour Notion. Génère du contenu de qualité, bien structuré et pertinent. Réponds uniquement avec le contenu demandé, sans introduction ni conclusion supplémentaire.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 2000, // Limit to avoid very long content
+    });
+
+    const generatedText = completion.choices[0]?.message?.content?.trim();
+
+    if (!generatedText) {
+      return {
+        success: false,
+        message: 'Failed to generate content',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    logger.info({ correlationId, generatedLength: generatedText.length }, 'Content generated');
+
+    // Notion has a 2000 character limit per block
+    // If content is too long, split it into multiple blocks
+    const MAX_BLOCK_LENGTH = 1900; // Use 1900 to be safe
+    const blocks = [];
+
+    if (generatedText.length <= MAX_BLOCK_LENGTH) {
+      // Single block
+      blocks.push({
+        type: blockType,
+        [blockType]: { rich_text: buildRichText(generatedText) },
+      });
+      logger.info({ correlationId, blockCount: 1 }, 'Single block created');
+    } else {
+      // Split into multiple blocks
+      logger.info({ correlationId, totalLength: generatedText.length, maxLength: MAX_BLOCK_LENGTH }, 'Splitting content into multiple blocks');
+      
+      const chunks = [];
+      for (let i = 0; i < generatedText.length; i += MAX_BLOCK_LENGTH) {
+        chunks.push(generatedText.slice(i, i + MAX_BLOCK_LENGTH));
+      }
+
+      logger.info({ correlationId, chunkCount: chunks.length, chunkLengths: chunks.map(c => c.length) }, 'Content split into chunks');
+
+      for (const chunk of chunks) {
+        blocks.push({
+          type: blockType,
+          [blockType]: { rich_text: buildRichText(chunk) },
+        });
+      }
+    }
+
+    await notion.blocks.children.append({
+      block_id: pageId,
+      children: blocks as any,
+    });
+
+    return {
+      success: true,
+      message: `✨ Content generated and added (${generatedText.length} characters, ${blocks.length} block${blocks.length > 1 ? 's' : ''})`,
+      duration: Date.now() - startTime,
+    };
+  } catch (error) {
+    logger.error({ correlationId, error }, 'Failed to generate content');
+    return {
+      success: false,
+      message: `Failed to generate content: ${error instanceof Error ? error.message : 'Unknown'}`,
+      duration: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * DELETE_PAGE: Delete a page by searching for it first
+ */
+export async function deletePage(
+  notion: Client,
+  userId: string,
+  pageQuery: string,
+  correlationId: string
+): Promise<NotionActionResult> {
+  const startTime = Date.now();
+
+  try {
+    logger.info({ correlationId, userId, pageQuery }, 'Searching page to delete');
+
+    // First, search for the page
+    const searchResponse = await notion.search({
+      query: pageQuery,
+      filter: { property: 'object', value: 'page' },
+      page_size: 5,
+    });
+
+    if (searchResponse.results.length === 0) {
+      return {
+        success: false,
+        message: `No page found with name "${pageQuery}"`,
+        duration: Date.now() - startTime,
+      };
+    }
+
+    // Get the first matching page
+    const page = searchResponse.results[0];
+    if (!('id' in page)) {
+      return {
+        success: false,
+        message: 'Invalid page object returned',
+        duration: Date.now() - startTime,
+      };
+    }
+
+    const pageId = page.id;
+    
+    // Extract page title safely
+    let pageTitle = pageQuery;
+    if ('properties' in page && 'title' in page.properties) {
+      const titleProp = page.properties.title;
+      if (titleProp.type === 'title' && Array.isArray(titleProp.title) && titleProp.title.length > 0) {
+        pageTitle = titleProp.title[0]?.plain_text || pageQuery;
+      }
+    }
+
+    logger.info({ correlationId, userId, pageId, pageTitle }, 'Deleting page');
+
+    // Archive (soft delete) the page
+    await notion.pages.update({
+      page_id: pageId,
+      archived: true,
+    });
+
+    return {
+      success: true,
+      message: `Page "${pageTitle}" deleted successfully`,
+      duration: Date.now() - startTime,
+    };
+  } catch (error) {
+    logger.error({ correlationId, error }, 'Failed to delete page');
+    return {
+      success: false,
+      message: `Failed to delete page: ${error instanceof Error ? error.message : 'Unknown'}`,
+      duration: Date.now() - startTime,
+    };
+  }
+}

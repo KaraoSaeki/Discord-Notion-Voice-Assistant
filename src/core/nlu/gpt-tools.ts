@@ -14,12 +14,15 @@ export const IntentSchema = z.object({
     'CREATE_BLOCK',
     'UPDATE_BLOCK',
     'DELETE_BLOCK',
+    'DELETE_PAGE',
     'GO_BACK',
     'CREATE_PAGE',
     'APPEND_TODO',
     'SUMMARIZE_PAGE',
+    'GENERATE_CONTENT',
   ]),
   pageQuery: z.string().optional(),
+  blockId: z.string().optional(),
   block: z
     .object({
       type: z.enum([
@@ -36,6 +39,7 @@ export const IntentSchema = z.object({
       text: z.string(),
     })
     .optional(),
+  prompt: z.string().optional(), // For GENERATE_CONTENT
   position: z.string().optional(), // "start" | "end" | "after:blockId"
   options: z
     .object({
@@ -54,13 +58,15 @@ Tu dois analyser la transcription et retourner une intention structurée en JSON
 
 Actions disponibles:
 - OPEN_PAGE: ouvrir une page (par nom ou ID)
-- CREATE_BLOCK: créer un bloc de contenu (paragraphe, titre, liste, etc.)
+- CREATE_BLOCK: créer un bloc avec du texte LITTÉRAL (l'utilisateur dicte exactement ce qu'il veut)
 - UPDATE_BLOCK: mettre à jour un bloc existant
-- DELETE_BLOCK: supprimer un bloc
+- DELETE_BLOCK: supprimer un bloc spécifique (nécessite blockId)
+- DELETE_PAGE: supprimer une page entière (par nom avec pageQuery)
 - GO_BACK: revenir à la page précédente
 - CREATE_PAGE: créer une nouvelle page
 - APPEND_TODO: ajouter une tâche à faire
 - SUMMARIZE_PAGE: résumer le contenu de la page courante
+- GENERATE_CONTENT: générer du contenu avec l'IA (l'utilisateur donne une instruction/prompt)
 
 Types de blocs:
 - paragraph: paragraphe normal
@@ -72,12 +78,28 @@ Types de blocs:
 - toggle: bloc repliable
 
 Exemples de commandes:
-- "Ouvre la page projet alpha" → OPEN_PAGE avec pageQuery="projet alpha"
+
+Texte LITTÉRAL (CREATE_BLOCK):
 - "Ajoute un paragraphe avec le texte bonjour" → CREATE_BLOCK avec block.type=paragraph, block.text="bonjour"
 - "Crée un titre niveau 1 Introduction" → CREATE_BLOCK avec block.type=heading_1, block.text="Introduction"
+- "Écris exactement ceci : Rendez-vous demain" → CREATE_BLOCK avec block.text="Rendez-vous demain"
+
+GÉNÉRATION de contenu (GENERATE_CONTENT):
+- "Écris un paragraphe sur l'intelligence artificielle" → GENERATE_CONTENT avec prompt="écris un paragraphe sur l'intelligence artificielle", block.type=paragraph
+- "Génère une introduction pour mon projet" → GENERATE_CONTENT avec prompt="génère une introduction pour mon projet"
+- "Rédige un email de remerciement" → GENERATE_CONTENT avec prompt="rédige un email de remerciement"
+- "Crée une liste de 5 idées pour..." → GENERATE_CONTENT avec prompt="crée une liste de 5 idées pour..."
+
+Autres actions:
+- "Ouvre la page projet alpha" → OPEN_PAGE avec pageQuery="projet alpha"
 - "Ajoute une tâche appeler Jean" → APPEND_TODO avec block.text="appeler Jean"
+- "Supprime la page test" → DELETE_PAGE avec pageQuery="test"
 - "Reviens en arrière" → GO_BACK
 - "Résume cette page" → SUMMARIZE_PAGE
+
+RÈGLE IMPORTANTE:
+Si l'utilisateur demande de "générer", "écrire", "rédiger", "créer" du contenu SANS donner le texte exact, utilise GENERATE_CONTENT.
+Si l'utilisateur dicte le texte exact (« avec le texte... », « exactement ceci... »), utilise CREATE_BLOCK.
 
 Sois précis et extrait toutes les informations pertinentes de la transcription.`;
 
@@ -96,16 +118,26 @@ const intentFunction: OpenAI.Chat.ChatCompletionTool = {
             'CREATE_BLOCK',
             'UPDATE_BLOCK',
             'DELETE_BLOCK',
+            'DELETE_PAGE',
             'GO_BACK',
             'CREATE_PAGE',
             'APPEND_TODO',
             'SUMMARIZE_PAGE',
+            'GENERATE_CONTENT',
           ],
           description: 'The action to perform in Notion',
         },
         pageQuery: {
           type: 'string',
-          description: 'Page name or ID to search/open',
+          description: 'Page name or ID to search/open/delete',
+        },
+        blockId: {
+          type: 'string',
+          description: 'Block ID for UPDATE_BLOCK or DELETE_BLOCK actions',
+        },
+        prompt: {
+          type: 'string',
+          description: 'Prompt/instruction for GENERATE_CONTENT action - what content to generate',
         },
         block: {
           type: 'object',
@@ -180,7 +212,7 @@ export async function parseIntent(
       ],
       tools: [intentFunction],
       tool_choice: { type: 'function', function: { name: 'execute_notion_intent' } },
-      temperature: 0.1,
+      temperature: 1,
     });
 
     const duration = Date.now() - startTime;

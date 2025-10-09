@@ -7,6 +7,8 @@ import {
   goBack,
   createPage,
   summarizePage,
+  deletePage,
+  generateContent,
   NotionActionResult,
 } from '../../core/notion/actions.js';
 import { logger } from '../../core/logging.js';
@@ -69,6 +71,16 @@ export async function executeIntent(
         duration: 0,
       };
 
+    case 'DELETE_PAGE':
+      if (!intent.pageQuery) {
+        return {
+          success: false,
+          message: 'Page name is required for DELETE_PAGE',
+          duration: 0,
+        };
+      }
+      return deletePage(notion, userId, intent.pageQuery, correlationId);
+
     case 'GO_BACK':
       return goBack(userId);
 
@@ -84,6 +96,22 @@ export async function executeIntent(
 
     case 'SUMMARIZE_PAGE':
       return summarizePage(notion, userId, correlationId);
+
+    case 'GENERATE_CONTENT':
+      if (!intent.prompt) {
+        return {
+          success: false,
+          message: 'Prompt is required for GENERATE_CONTENT',
+          duration: 0,
+        };
+      }
+      return generateContent(
+        notion,
+        userId,
+        intent.prompt,
+        intent.block?.type || 'paragraph',
+        correlationId
+      );
 
     default:
       return {

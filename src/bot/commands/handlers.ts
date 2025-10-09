@@ -1,5 +1,5 @@
 import { ChatInputCommandInteraction, ChannelType } from 'discord.js';
-import { joinVoiceChannel, getVoiceConnection } from '@discordjs/voice';
+import { joinVoiceChannel, getVoiceConnection, VoiceConnection } from '@discordjs/voice';
 import { env } from '../../config/env.js';
 import { logger } from '../../core/logging.js';
 import { userContextStore } from '../../core/context/user-context.js';
@@ -7,6 +7,13 @@ import { notionTokenStore } from '../../core/notion/token-store.js';
 import { getNotionClient } from '../../core/notion/client.js';
 import { openPage } from '../../core/notion/actions.js';
 import { startVoiceReceiver } from '../voice/receiver.js';
+import { pendingAuthStore } from '../../core/notion/pending-auth.js';
+import { parseIntent } from '../../core/nlu/gpt-tools.js';
+import { executeIntent } from '../voice/intent-executor.js';
+import { stopVoiceReceiver } from '../voice/receiver.js';
+
+// Store active voice connections
+const activeConnections = new Map<string, VoiceConnection>();
 
 /**
  * Handle /join command
@@ -47,11 +54,25 @@ export async function handleJoin(interaction: ChatInputCommandInteraction): Prom
 
     logger.info({ userId, channelId: channel.id }, 'Joined voice channel');
 
+    // Store connection
+    activeConnections.set(interaction.guildId, connection);
+    
+    // Log what we stored
+    logger.info(
+      { 
+        guildId: interaction.guildId, 
+        channelId: channel.id, 
+        state: connection.state.status,
+        storedConnections: Array.from(activeConnections.keys())
+      },
+      'Voice connection established and stored'
+    );
+
     // Start listening to this user only
     startVoiceReceiver(connection, userId);
 
     await interaction.editReply(
-      `✅ Joined ${channel.name}\n🎤 Listening to you only\n💬 Say commands like "open page tasks" or "add a paragraph with hello world"`
+      `✅ **Joined ${channel.name}**\n🎧 Listening to you only\n💬 Say commands like "open page tasks" or "add a paragraph with hello world"`
     );
   } catch (error) {
     logger.error({ error, userId }, 'Failed to join voice channel');
@@ -70,16 +91,69 @@ export async function handleLeave(interaction: ChatInputCommandInteraction): Pro
     return;
   }
 
-  const connection = getVoiceConnection(interaction.guildId);
+  // Debug: Log what we're looking for
+  logger.info(
+    { 
+      guildId: interaction.guildId,
+      storedConnections: Array.from(activeConnections.keys()),
+      storeSize: activeConnections.size
+    },
+    'Looking for voice connection'
+  );
+
+  // Try to get connection from our store first
+  let connection = activeConnections.get(interaction.guildId);
+  
+  logger.info(
+    { 
+      guildId: interaction.guildId,
+      foundInStore: !!connection
+    },
+    'Store lookup result'
+  );
+  
+  // Fallback to getVoiceConnection
   if (!connection) {
+    connection = getVoiceConnection(interaction.guildId);
+    logger.info(
+      { 
+        guildId: interaction.guildId,
+        foundViaAPI: !!connection
+      },
+      'API lookup result'
+    );
+  }
+  
+  if (!connection) {
+    logger.warn(
+      { 
+        guildId: interaction.guildId,
+        storedKeys: Array.from(activeConnections.keys())
+      }, 
+      'No voice connection found anywhere'
+    );
     await interaction.editReply('❌ Not in a voice channel');
     return;
   }
 
-  connection.destroy();
-  logger.info({ guildId: interaction.guildId }, 'Left voice channel');
-
-  await interaction.editReply('✅ Left voice channel');
+  try {
+    const userId = interaction.user.id;
+    
+    // Stop voice receiver
+    stopVoiceReceiver(userId);
+    
+    // Destroy connection
+    connection.destroy();
+    
+    // Remove from store
+    activeConnections.delete(interaction.guildId);
+    
+    logger.info({ guildId: interaction.guildId, userId }, 'Left voice channel');
+    await interaction.editReply('✅ Left voice channel');
+  } catch (error) {
+    logger.error({ error, guildId: interaction.guildId }, 'Failed to leave voice channel');
+    await interaction.editReply('❌ Failed to leave voice channel');
+  }
 }
 
 /**
@@ -90,19 +164,18 @@ export async function handleLinkNotion(interaction: ChatInputCommandInteraction)
 
   const userId = interaction.user.id;
   
-  // Notion expects scopes as a single space-separated string
-  const scopes = env.NOTION_SCOPES.split(',').map((s: string) => s.trim()).join(' ');
+  // Create a pending authorization entry
+  const authCode = pendingAuthStore.create(userId);
 
   const authUrl = new URL('https://api.notion.com/v1/oauth/authorize');
   authUrl.searchParams.set('client_id', env.NOTION_CLIENT_ID);
   authUrl.searchParams.set('redirect_uri', env.NOTION_REDIRECT_URI);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('owner', 'user');
-  authUrl.searchParams.set('state', userId);
-  authUrl.searchParams.set('scope', scopes);
+  authUrl.searchParams.set('state', authCode);
 
   await interaction.editReply(
-    `🔗 **Link your Notion workspace**\n\nClick here to authorize:\n${authUrl.toString()}\n\n⚠️ Make sure to select the workspace you want to use!`
+    `🔗 **Link your Notion workspace**\n\nClick here to authorize:\n${authUrl.toString()}\n\n⚠️ Make sure to select the workspace you want to use!\n\n⏱️ This link expires in 10 minutes.`
   );
 }
 
@@ -188,4 +261,42 @@ export async function handleResetContext(interaction: ChatInputCommandInteractio
   userContextStore.reset(userId);
 
   await interaction.editReply('🔄 Context reset\n✅ Page history cleared');
+}
+
+/**
+ * Handle /execute command
+ */
+export async function handleExecute(interaction: ChatInputCommandInteraction): Promise<void> {
+  await interaction.deferReply({ ephemeral: true });
+
+  const userId = interaction.user.id;
+  const commandText = interaction.options.getString('command', true);
+
+  // Check if Notion is linked
+  const notion = getNotionClient(userId);
+  if (!notion) {
+    await interaction.editReply('❌ Please link your Notion workspace first using `/link-notion`');
+    return;
+  }
+
+  try {
+    await interaction.editReply(`🔄 Processing: "${commandText}"...`);
+
+    // Parse the text command into an intent
+    const { intent } = await parseIntent(commandText, interaction.id);
+    logger.info({ userId, commandText, intent }, '📝 Text command parsed');
+
+    // Execute the intent
+    const result = await executeIntent(notion, userId, intent, interaction.id);
+
+    // Send result
+    if (result.success) {
+      await interaction.editReply(`✅ **Success!**\n${result.message}`);
+    } else {
+      await interaction.editReply(`❌ **Failed**\n${result.message}`);
+    }
+  } catch (error) {
+    logger.error({ error, userId, commandText }, 'Failed to execute text command');
+    await interaction.editReply('❌ An error occurred while processing your command');
+  }
 }

@@ -3,6 +3,7 @@ import { logger } from '../logging.js';
 import { userContextStore } from '../context/user-context.js';
 import OpenAI from 'openai';
 import { env } from '../../config/env.js';
+import { buildRichText, splitIntoBlocks } from './rich-text-formatter.js';
 
 const openai = new OpenAI({
   apiKey: env.OPENAI_API_KEY,
@@ -16,17 +17,6 @@ export interface NotionActionResult {
   duration: number;
 }
 
-/**
- * Build rich text object for Notion API
- */
-function buildRichText(text: string) {
-  return [
-    {
-      type: 'text' as const,
-      text: { content: text },
-    },
-  ];
-}
 
 /**
  * OPEN_PAGE: Search and open a page
@@ -166,6 +156,13 @@ export async function createBlock(
         };
         break;
 
+      case 'numbered_list_item':
+        blockData = {
+          type: 'numbered_list_item',
+          numbered_list_item: { rich_text: buildRichText(text) },
+        };
+        break;
+
       case 'to_do':
         blockData = {
           type: 'to_do',
@@ -200,6 +197,20 @@ export async function createBlock(
         };
         break;
 
+      case 'quote':
+        blockData = {
+          type: 'quote',
+          quote: { rich_text: buildRichText(text) },
+        };
+        break;
+
+      case 'divider':
+        blockData = {
+          type: 'divider',
+          divider: {},
+        };
+        break;
+
       default:
         return {
           success: false,
@@ -210,8 +221,8 @@ export async function createBlock(
 
     const response = await notion.blocks.children.append({
       block_id: pageId,
-      // @ts-expect-error - Notion API types are complex
-      children: [blockData],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      children: [blockData] as any,
     });
 
     return {
@@ -266,7 +277,7 @@ export async function deleteBlock(
 /**
  * GO_BACK: Navigate to previous page
  */
-export async function goBack(userId: string): Promise<NotionActionResult> {
+export function goBack(userId: string): NotionActionResult {
   const startTime = Date.now();
   const prevPageId = userContextStore.goBack(userId);
 
@@ -314,7 +325,8 @@ export async function createPage(
       parent: { page_id: parentPageId },
       properties: {
         title: {
-          title: buildRichText(title),
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+          title: buildRichText(title, false) as any, // Don't parse markdown in titles
         },
       },
     });
@@ -370,10 +382,12 @@ export async function summarizePage(
     // Extract text content
     const textContent: string[] = [];
     for (const block of blocks.results) {
-      if ('type' in block) {
+      if ('type' in block && block.type) {
         const blockType = block.type;
-        // @ts-expect-error - Dynamic block type access
-        const richText = block[blockType]?.rich_text;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+        const blockData = block as any;
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
+        const richText = blockData[blockType]?.rich_text;
         if (Array.isArray(richText)) {
           const text = richText.map((rt: { plain_text: string }) => rt.plain_text).join('');
           if (text) textContent.push(text);
@@ -411,11 +425,13 @@ export async function summarizePage(
       children: [
         {
           type: 'heading_2',
-          heading_2: { rich_text: buildRichText('📝 Summary') },
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+          heading_2: { rich_text: buildRichText('📝 Summary', false) as any },
         },
         {
           type: 'paragraph',
-          paragraph: { rich_text: buildRichText(summaryText) },
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-explicit-any
+          paragraph: { rich_text: buildRichText(summaryText, true) as any }, // Parse markdown in summary
         },
       ],
     });
@@ -491,47 +507,20 @@ export async function generateContent(
       };
     }
 
-    logger.info({ correlationId, generatedLength: generatedText.length }, 'Content generated');
+    logger.info({ correlationId, generatedLength: generatedText.length }, 'Content generated with markdown support');
 
-    // Notion has a 2000 character limit per block
-    // If content is too long, split it into multiple blocks
-    const MAX_BLOCK_LENGTH = 1900; // Use 1900 to be safe
-    const blocks = [];
-
-    if (generatedText.length <= MAX_BLOCK_LENGTH) {
-      // Single block
-      blocks.push({
-        type: blockType,
-        [blockType]: { rich_text: buildRichText(generatedText) },
-      });
-      logger.info({ correlationId, blockCount: 1 }, 'Single block created');
-    } else {
-      // Split into multiple blocks
-      logger.info({ correlationId, totalLength: generatedText.length, maxLength: MAX_BLOCK_LENGTH }, 'Splitting content into multiple blocks');
-      
-      const chunks = [];
-      for (let i = 0; i < generatedText.length; i += MAX_BLOCK_LENGTH) {
-        chunks.push(generatedText.slice(i, i + MAX_BLOCK_LENGTH));
-      }
-
-      logger.info({ correlationId, chunkCount: chunks.length, chunkLengths: chunks.map(c => c.length) }, 'Content split into chunks');
-
-      for (const chunk of chunks) {
-        blocks.push({
-          type: blockType,
-          [blockType]: { rich_text: buildRichText(chunk) },
-        });
-      }
-    }
+    // Use the splitIntoBlocks utility which handles markdown formatting
+    const blocks = splitIntoBlocks(generatedText, blockType);
 
     await notion.blocks.children.append({
       block_id: pageId,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       children: blocks as any,
     });
 
     return {
       success: true,
-      message: `✨ Content generated and added (${generatedText.length} characters, ${blocks.length} block${blocks.length > 1 ? 's' : ''})`,
+      message: `✨ Content generated and added with formatting (${generatedText.length} characters, ${blocks.length} block${blocks.length > 1 ? 's' : ''})`,
       duration: Date.now() - startTime,
     };
   } catch (error) {

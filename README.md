@@ -52,6 +52,14 @@ Production-ready Discord voice bot that listens to voice commands, transcribes s
 
 ## 🎯 Features
 
+### ✨ New Features (Latest Update)
+- **🗂️ Database Creation**: Create Kanban boards, tables, and custom databases directly from voice/text commands
+- **📝 Markdown Formatting**: GPT-generated content supports **bold**, *italic*, `code`, [links](url), and more - properly formatted in Notion
+- **🧱 New Block Types**: Quote blocks, dividers, numbered lists
+- **🔍 Page Search**: Find pages by name with voice commands
+
+See [NOUVELLES_FONCTIONNALITES.md](NOUVELLES_FONCTIONNALITES.md) for detailed documentation and examples.
+
 ### Voice Pipeline
 - **Voice Recognition**: Bot joins a Discord voice channel and listens to the command author only (filtered by `userId`)
 - **Speech-to-Text**: Automatic transcription using OpenAI Whisper
@@ -70,13 +78,28 @@ Production-ready Discord voice bot that listens to voice commands, transcribes s
 ### Notion Actions (Voice Commands)
 - **OPEN_PAGE**: Search and open a page by name or ID
   - *"Open page tasks"*
-- **CREATE_BLOCK**: Add content blocks (paragraph, headings, lists, to-dos, callouts, code, toggles)
+- **CREATE_BLOCK**: Add content blocks (paragraph, headings, lists, to-dos, callouts, code, toggles, quotes, dividers)
   - *"Add a paragraph with hello world"*
   - *"Create a heading level 1 with Introduction"*
+  - *"Add a quote: Success is a journey"*
+  - *"Insert a divider"*
 - **APPEND_TODO**: Add a to-do item
   - *"Add a task: call Jean"*
 - **CREATE_PAGE**: Create a new sub-page
   - *"Create a new page called Meeting Notes"*
+- **GENERATE_CONTENT**: Generate AI content with **Markdown formatting** support
+  - *"Write a professional email about project status"*
+  - *"Generate a summary with **bold** and *italic* text"*
+- **CREATE_KANBAN**: Create a Kanban board with status columns
+  - *"Create a kanban for Sprint Planning"*
+  - *"Make a board with columns Todo, Doing, Done"*
+- **CREATE_TABLE**: Create a table/database with custom columns
+  - *"Create a table Contacts with name, email, phone"*
+  - *"Make a table Budget with amount, category, date"*
+- **CREATE_DATABASE**: Create a generic database
+  - *"Create a database for project tracking"*
+- **SEARCH_PAGES**: Search for pages by name
+  - *"Search pages containing design"*
 - **SUMMARIZE_PAGE**: Generate an AI summary of the current page content
   - *"Summarize this page"*
 - **GO_BACK**: Navigate to the previous page

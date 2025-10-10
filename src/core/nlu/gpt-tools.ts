@@ -20,6 +20,11 @@ export const IntentSchema = z.object({
     'APPEND_TODO',
     'SUMMARIZE_PAGE',
     'GENERATE_CONTENT',
+    'CREATE_DATABASE',
+    'CREATE_KANBAN',
+    'CREATE_TABLE',
+    'ADD_DATABASE_ENTRY',
+    'SEARCH_PAGES',
   ]),
   pageQuery: z.string().optional(),
   blockId: z.string().optional(),
@@ -31,10 +36,13 @@ export const IntentSchema = z.object({
         'heading_2',
         'heading_3',
         'bulleted_list_item',
+        'numbered_list_item',
         'to_do',
         'callout',
         'code',
         'toggle',
+        'quote',
+        'divider',
       ]),
       text: z.string(),
     })
@@ -48,6 +56,11 @@ export const IntentSchema = z.object({
       dryRun: z.boolean().optional(),
     })
     .optional(),
+  // Database-related fields
+  databaseTitle: z.string().optional(),
+  databaseId: z.string().optional(),
+  columns: z.array(z.string()).optional(), // For Kanban columns or table columns
+  properties: z.record(z.any()).optional(), // For database entries
 });
 
 export type Intent = z.infer<typeof IntentSchema>;
@@ -67,15 +80,23 @@ Actions disponibles:
 - APPEND_TODO: ajouter une tâche à faire
 - SUMMARIZE_PAGE: résumer le contenu de la page courante
 - GENERATE_CONTENT: générer du contenu avec l'IA (l'utilisateur donne une instruction/prompt)
+- CREATE_DATABASE: créer une database personnalisée avec colonnes spécifiques
+- CREATE_KANBAN: créer un tableau Kanban avec des colonnes de statut
+- CREATE_TABLE: créer un tableau simple
+- ADD_DATABASE_ENTRY: ajouter une entrée dans une database existante
+- SEARCH_PAGES: rechercher des pages par nom
 
 Types de blocs:
 - paragraph: paragraphe normal
 - heading_1, heading_2, heading_3: titres
 - bulleted_list_item: liste à puces
+- numbered_list_item: liste numérotée
 - to_do: case à cocher
 - callout: encadré d'information
 - code: bloc de code
 - toggle: bloc repliable
+- quote: citation
+- divider: séparateur horizontal
 
 Exemples de commandes:
 
@@ -97,9 +118,18 @@ Autres actions:
 - "Reviens en arrière" → GO_BACK
 - "Résume cette page" → SUMMARIZE_PAGE
 
-RÈGLE IMPORTANTE:
-Si l'utilisateur demande de "générer", "écrire", "rédiger", "créer" du contenu SANS donner le texte exact, utilise GENERATE_CONTENT.
-Si l'utilisateur dicte le texte exact (« avec le texte... », « exactement ceci... »), utilise CREATE_BLOCK.
+Databases et structures:
+- "Crée un kanban" / "Crée un tableau kanban" → CREATE_KANBAN avec databaseTitle et columns=["To Do", "In Progress", "Done"]
+- "Crée un tableau avec les colonnes nom, email, téléphone" → CREATE_TABLE avec databaseTitle et columns=["nom", "email", "téléphone"]
+- "Crée une database pour gérer mes projets" → CREATE_DATABASE avec databaseTitle et description
+- "Recherche les pages contenant design" → SEARCH_PAGES avec pageQuery="design"
+
+RÈGLES IMPORTANTES:
+1. Si l'utilisateur demande de "générer", "écrire", "rédiger", "créer" du contenu SANS donner le texte exact, utilise GENERATE_CONTENT.
+2. Si l'utilisateur dicte le texte exact (« avec le texte... », « exactement ceci... »), utilise CREATE_BLOCK.
+3. Si l'utilisateur demande un "kanban", "board", "tableau kanban", utilise CREATE_KANBAN (PAS CREATE_BLOCK avec du texte).
+4. Si l'utilisateur demande un "tableau" avec des colonnes, utilise CREATE_TABLE.
+5. Le texte généré par GPT peut contenir du Markdown (**gras**, *italique*, etc.) qui sera correctement formaté dans Notion.
 
 Sois précis et extrait toutes les informations pertinentes de la transcription.`;
 
@@ -124,6 +154,11 @@ const intentFunction: OpenAI.Chat.ChatCompletionTool = {
             'APPEND_TODO',
             'SUMMARIZE_PAGE',
             'GENERATE_CONTENT',
+            'CREATE_DATABASE',
+            'CREATE_KANBAN',
+            'CREATE_TABLE',
+            'ADD_DATABASE_ENTRY',
+            'SEARCH_PAGES',
           ],
           description: 'The action to perform in Notion',
         },
@@ -150,10 +185,13 @@ const intentFunction: OpenAI.Chat.ChatCompletionTool = {
                 'heading_2',
                 'heading_3',
                 'bulleted_list_item',
+                'numbered_list_item',
                 'to_do',
                 'callout',
                 'code',
                 'toggle',
+                'quote',
+                'divider',
               ],
               description: 'Block type',
             },
@@ -180,6 +218,23 @@ const intentFunction: OpenAI.Chat.ChatCompletionTool = {
               description: 'Emoji for callout blocks',
             },
           },
+        },
+        databaseTitle: {
+          type: 'string',
+          description: 'Title for CREATE_DATABASE, CREATE_KANBAN, or CREATE_TABLE',
+        },
+        databaseId: {
+          type: 'string',
+          description: 'Database ID for ADD_DATABASE_ENTRY',
+        },
+        columns: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Column names for CREATE_KANBAN (status columns) or CREATE_TABLE',
+        },
+        properties: {
+          type: 'object',
+          description: 'Properties for ADD_DATABASE_ENTRY (key-value pairs)',
         },
       },
       required: ['action'],
